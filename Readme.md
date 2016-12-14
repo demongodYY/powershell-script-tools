@@ -1,5 +1,9 @@
 # powershell工具集
 
+## powershell学习笔记
+
+powershell.md是我学习powershell脚本编程时的笔记（不断更新中，欢迎交流补充）
+
 ## 网络切换检测类（当本机IP发生改变时触发）
 
 ### 1、批量远程主机文件扫描
