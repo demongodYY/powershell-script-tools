@@ -1,0 +1,3 @@
+hostname(ip)1 username1 password1
+hostname(ip)2 username2 password2
+hostname(ip)3 username3 password3
