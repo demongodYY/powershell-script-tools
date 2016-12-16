@@ -32,7 +32,7 @@
         try{
             $pass= ConvertTo-SecureString $password -AsPlainText -Force
             $mycreds = New-Object System.Management.Automation.PSCredential($username,$pass)
-            Get-WmiObject -ComputerName $hostname -Credential $mycreds -Query $query |select name|Set-Content -Path "$PSScriptRoot\$hostname" -Force
+            Get-WmiObject -ComputerName $hostname -Credential $mycreds -Query $query -ea stop|select name|Set-Content -Path "$PSScriptRoot\$hostname" -Force
             return 1
         }
         catch{
@@ -53,26 +53,29 @@
         $query = $query + ($Type -join " OR ")
         while(1-eq1){
             $hostArray=Get-Content $hostFile
-            [System.Collections.ArrayList]$hostList=@($null)
-            foreach($element in $hostArray){
-                $hostList.Insert(0,$element)
-            }
-            if(!$hostList){
+            $hostList=@()
+            if(!$hostArray){
                 Write-Host "over"
                 break
             }
             if(queryIpChange -eq 1){
-                Write-Host "OKOKOKOK"
+                Write-Host "ipchange,starting..."
                 Start-Sleep 5
-                while($hostList){
-                    $hostComputer=$hostList[0]
+                foreach($hostComputer in $hostArray){
                     $arr=$hostComputer -split ' '    
-                    if(RemoteDir $arr[0] $arr[1] $arr[2] $query -eq 1){
-                        $hostList.RemoveAt(0)
-                        $hostList| Set-Content $hostFile -Force #如果成功就删除第一行
-                        Write-Host "deleting..."     
+                    if((RemoteDir $arr[0] $arr[1] $arr[2] $query) -eq 1){
+                        $hostList+=$hostComputer
+                        Write-Host $arr[0] + $arr[1] + $arr[2] "deleting..."     
+                    }
+                    if((RemoteDir $arr[0] $arr[1] $arr[2] $query) -eq -1){
+                        Write-Host "error!"
                     }
                 }
+                $hostFilter=Compare-Object -ReferenceObject $hostArray -DifferenceObject $hostList | Select-Object -ExpandProperty InputObject
+                if(!$hostFilter){
+                    $hostFilter=$null
+                }
+                $hostFilter| Set-Content $hostFile -Force #如果成功执行的条目就删除就删除
 
             }
             Start-Sleep 5
