@@ -5,6 +5,19 @@
     [Parameter(ParameterSetName='file',Mandatory=$false)]
     [Switch]$File    
     )
+
+    function ConvertTo-Base64($string) {
+        $bytes  = [System.Text.Encoding]::UTF8.GetBytes($string)
+        $encoded = [System.Convert]::ToBase64String($bytes)
+        return $encoded
+    }
+ 
+    function ConvertFrom-Base64($string) {
+       $bytes  = [System.Convert]::FromBase64String($string)
+       $decoded = [System.Text.Encoding]::UTF8.GetString($bytes)
+       return $decoded
+    }
+
     function getNewIp(){
         $name="." 
         $items = get-wmiObject -class win32_NetworkAdapterConfiguration -namespace "root\CIMV2" -ComputerName $name | where{$_.IPEnabled -eq “True”} 
@@ -28,11 +41,13 @@
             return 0
         }    
     }
-    function RemoteDir($hostname,$username,$password,$query){
+
+    function wmiQuery($hostname,$username,$password,$query){
         try{
             $pass= ConvertTo-SecureString $password -AsPlainText -Force
             $mycreds = New-Object System.Management.Automation.PSCredential($username,$pass)
-            Get-WmiObject -ComputerName $hostname -Credential $mycreds -Query $query -ea stop|select name|Set-Content -Path "$PSScriptRoot\$hostname" -Force
+            $fileName=ConvertTo-Base64 $hostname
+            Get-WmiObject -ComputerName $hostname -Credential $mycreds -Query $query -ea stop|select name|Set-Content -Path "$PSScriptRoot\$fileName" -Force
             return 1
         }
         catch{
@@ -42,15 +57,37 @@
             return -1
         }
     }
-    $script:oldIp=getNewIp
-    $hostFile="$PSScriptRoot\host.txt"
-    if($File){
+
+    function dirDataFile(){
         $query = "Select * from CIM_DataFile where "
-        for($i=0;$i -lt $Type.Length;$i++){
-            $value = $Type[$i]
-            $Type[$i]="(extension = '$value')"
+        #######check param "Type" is arr to get $query#######
+        $testArray=@()
+        if($Type.GetType() -eq $testArray.GetType()){
+            for($i=0;$i -lt $Type.Length;$i++){
+                $value = $Type[$i]
+                $Type[$i]="(extension = '$value')"
             }
-        $query = $query + ($Type -join " OR ")
+            $query = $query + ($Type -join " OR ") 
+        }
+        else{
+            $query= $query +"extension = '$Type'"
+        }
+        return $query
+    
+    }
+
+    function main(){
+        if($PSCmdlet.ParameterSetName -eq "default"){
+            Write-Host "param error"
+            return
+        }
+        $script:oldIp=getNewIp
+        $hostFile="$PSScriptRoot\host.txt"
+        #######get param to run different func#######
+        if($File){
+            $query = dirDataFile
+        }
+        #######start main loop#######
         while(1-eq1){
             $hostArray=Get-Content $hostFile
             $hostList=@()
@@ -60,24 +97,28 @@
             }
             if(queryIpChange -eq 1){
                 Write-Host "ipchange,starting..."
-                Start-Sleep 5
+                Start-Sleep 7
                 foreach($hostComputer in $hostArray){
                     $arr=$hostComputer -split ' '    
-                    if((RemoteDir $arr[0] $arr[1] $arr[2] $query) -eq 1){
+                    if((wmiQuery $arr[0] $arr[1] $arr[2] $query) -eq 1){
                         $hostList+=$hostComputer
-                        Write-Host $arr[0] + $arr[1] + $arr[2] "deleting..."     
+                        Write-Host $arr[0] "deleting..."     
                     }
-                    if((RemoteDir $arr[0] $arr[1] $arr[2] $query) -eq -1){
+                    else{
                         Write-Host "error!"
                     }
                 }
+                #######if item success than delete it#######
                 $hostFilter=Compare-Object -ReferenceObject $hostArray -DifferenceObject $hostList | Select-Object -ExpandProperty InputObject
                 if(!$hostFilter){
                     $hostFilter=$null
                 }
-                $hostFilter| Set-Content $hostFile -Force #如果成功执行的条目就删除就删除
-
+                $hostFilter| Set-Content $hostFile -Force
             }
             Start-Sleep 5
         }
     }
+
+    main
+
+
